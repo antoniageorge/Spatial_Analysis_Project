@@ -1,0 +1,147 @@
+---
+title: "Exploring Population Dynamics of Bulgaria"
+author: "Antonia George and Nicole Poynarova"
+date: "Jan 30, 2023"
+output: flexdashboard::flex_dashboard
+---
+
+```{r}
+# Install necessary packages if required
+if (!require("devtools")) install.packages("devtools")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("SpatialEpi")) install.packages("SpatialEpi")
+if (!require("leaflet")) install.packages("leaflet")
+if (!require("DT")) install.packages("DT")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("cartography")) install.packages("cartography")
+if (!require("stringr")) install.packages("stringr")
+if (!require("ggforce")) install.packages("ggforce")
+if (!require("rnaturalearth")) install.packages("rnaturalearth")
+if (!require("wbstats")) install.packages("wbstats")
+
+# Load packages
+install_github("PPgp/wpp2022")
+library('devtools')
+library("wpp2022")
+library("ggplot2")
+library(SpatialEpi)
+library(leaflet)
+library(DT)
+library(dplyr)
+library(ggplot2)
+library(cartography)
+library(stringr)
+library(ggforce)
+library(rnaturalearth)
+library(wbstats)
+
+options(timeout = 600)
+
+# Data
+data(pop1dt)
+data(pop1)
+data(popproj1dt)
+
+bulgaria_1dt <- pop1dt[pop1dt$name == "Bulgaria"]
+
+bulgaria_1dt_chart <- subset(bulgaria_1dt, select = c(year,pop) )
+
+bulgariaexpectedpop <- popproj1dt[popproj1dt$name == "Bulgaria"]
+bulgariaexpectedpop_chart <- subset(bulgariaexpectedpop, select = c(year,pop) )
+
+bulgaria_pop <- rbind(bulgaria_1dt_chart, bulgariaexpectedpop_chart)
+colnames(bulgaria_pop)=c("Year", "Population")
+bulgaria_pop$Population <- round(bulgaria_pop$Population)
+
+data(nuts2006)
+
+# For the Bulgaria Population (in thousands) by year table
+bulgaria_table <- subset(bulgaria_1dt, select = -c(country_code,name) )
+colnames(bulgaria_table) =c("Year", "Male Population", "Female Population", "Total Population")
+bulgaria_table$"Male Population" <- round(bulgaria_table$"Male Population")*1000
+bulgaria_table$"Female Population" <- round(bulgaria_table$"Female Population")*1000
+bulgaria_table$"Total Population" <- round(bulgaria_table$"Total Population")*1000
+
+# Extract just Bulgaria- for the Population Distribution of Bulgaria Map
+bg_nuts3 <- nuts3.df
+bg_nuts3 <- bg_nuts3 %>% filter(stringr::str_detect(id, 'BG'))
+
+#For the leaflet map of Balkans
+map <- ne_countries(country=c('bulgaria', 'romania', 'republic of serbia', 'greece', 'macedonia', 'albania', 'kosovo', 'montenegro', 'croatia', 'bosnia and herzegovina'))
+#map <- ne_countries(country='bulgaria')
+names(map)[names(map) == "iso_a3"] <- "ISO3"
+names(map)[names(map) == "name"] <- "NAME"
+
+indicators <- wbsearch(pattern = "population")
+d <- wb(indicator = "SP.POP.TOTL", startdate = 2016, enddate = 2016)
+map$population <- d[match(map$ISO3, d$iso3), "value"]
+```
+
+
+## Column {data-width=600}
+------------------------------------------------------------------------
+
+### Population of Balkan countries, 2016
+```{r}
+library(leaflet)
+pal <- colorBin(palette = "viridis", domain = map$population)
+
+map$labels <- paste0("<strong> Country: </strong> ", map$NAME, "<br/> ",
+                     "<strong> population: </strong> ", map$population, "<br/> ") %>%
+                       lapply(htmltools::HTML)
+
+leaflet(map) %>% addTiles() %>% 
+setView(lng = 0, lat = 30, zoom = 2) %>%
+  addPolygons(
+  fillColor = ~pal(population),
+  color = "white",
+  fillOpacity = 0.7,
+  label = ~labels,
+  highlight = highlightOptions(color = "black", bringToFront = TRUE)) %>%
+  leaflet::addLegend(pal = pal, values = ~population, opacity = 0.7, title = "population")%>%
+  addTiles() %>%
+  setView(lat=44, lng=21, zoom = 4) 
+```
+
+### Bulgaria Population by Year
+
+```{r}
+plot.new()
+DT::datatable(bulgaria_table)
+```
+
+
+## Column {data-width=400}
+
+------------------------------------------------------------------------
+
+### Population Distribution of Bulgaria Map
+
+```{r}
+# Build a choropleth map
+plot.new()
+bgmap<- choroLayer(spdf = nuts3.spdf, df = bg_nuts3, var = "pop2008" , legend.pos = "right", legend.title.txt = "Population") + layoutLayer(title = "Population Distribution of Bulgaria, 2008")
+```
+
+
+### Past and Predicted Population (in thousands) of Bulgaria 
+
+```{r}
+ggplot(bulgaria_pop, aes(x=Year,y=Population)) +
+  geom_link2(
+    aes(colour = after_stat(x > 2020))
+  ) +
+  scale_colour_manual(
+    values = c("blue3", "red3"),
+    name = "", 
+    labels = c("Past Population (1949-2020)", "Estimated Population (2020-2100)")
+  ) +
+  theme(
+    legend.position = 'bottom',
+    axis.text=element_text(size=14),
+    axis.title=element_text(size=16,face="bold"),
+    legend.text=element_text(size=11)
+    )
+```
+
